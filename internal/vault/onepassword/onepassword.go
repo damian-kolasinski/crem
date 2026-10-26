@@ -75,7 +75,7 @@ const (
 )
 
 var fieldIDsByLabel = map[string]string{
-	"p12 password":   fieldPassword,
+	"password":       fieldPassword,
 	"p12 (base64)":   fieldP12,
 	"certificate ID": fieldCertificateID,
 	"serial number":  fieldSerialNumber,
@@ -115,12 +115,13 @@ func (v *Vault) Save(ctx context.Context, entry vault.Entry) error {
 	if len(existing) > 0 {
 		return fmt.Errorf("%s in %s: %w", entry.CertificateID, v.Describe(), vault.ErrExists)
 	}
+	tags := []string{"crem", teamTag(entry.Team), certificateTag(entry.Team, entry.CertificateID)}
 	created := item{
 		Title:    fmt.Sprintf("Apple Distribution %s (%s)", entry.SerialNumber, entry.Team),
 		Category: "PASSWORD",
-		Tags:     []string{"crem", teamTag(entry.Team), certificateTag(entry.Team, entry.CertificateID)},
 		Fields: []field{
-			{ID: fieldPassword, Type: "CONCEALED", Purpose: "PASSWORD", Label: "p12 password", Value: entry.Password},
+			// op labels the built-in password field "password" whatever the template says.
+			{ID: fieldPassword, Type: "CONCEALED", Purpose: "PASSWORD", Label: "password", Value: entry.Password},
 			{ID: fieldP12, Type: "CONCEALED", Label: "p12 (base64)", Value: base64.StdEncoding.EncodeToString(entry.P12)},
 			{ID: fieldCertificateID, Type: "STRING", Label: "certificate ID", Value: entry.CertificateID},
 			{ID: fieldSerialNumber, Type: "STRING", Label: "serial number", Value: entry.SerialNumber},
@@ -133,8 +134,8 @@ func (v *Vault) Save(ctx context.Context, entry vault.Entry) error {
 	if err != nil {
 		return err
 	}
-	// Tags go on the command line too: the template's tags key is undocumented.
-	_, err = v.op.Run(ctx, template, v.args("item", "create", "--tags", strings.Join(created.Tags, ","), "-")...)
+	// Tags go only on the command line, which op documents; op adds a template's tags to them.
+	_, err = v.op.Run(ctx, template, v.args("item", "create", "--tags", strings.Join(tags, ","), "-")...)
 	return err
 }
 
