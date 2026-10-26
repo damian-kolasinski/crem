@@ -50,14 +50,18 @@ func renderStatus(out io.Writer, report signing.Report) error {
 			continue
 		}
 		if distribution == 0 {
-			fmt.Fprintln(table, "  ID\tNAME\tEXPIRES\tLIVE PROFILES\tNOTE")
+			fmt.Fprintln(table, "  ID\tNAME\tEXPIRES\tLIVE PROFILES\tIN VAULT\tNOTE")
 		}
 		distribution++
 		note := ""
 		if status.ExpiresSoon {
 			note = "expiring"
 		}
-		fmt.Fprintf(table, "  %s\t%s\t%s\t%d\t%s\n", status.Certificate.ID, status.Certificate.Name, date(status.Certificate.ExpiresAt), status.LiveProfileCount, note)
+		held := "-"
+		if report.VaultsChecked {
+			held = map[bool]string{true: "yes", false: "no"}[status.Held]
+		}
+		fmt.Fprintf(table, "  %s\t%s\t%s\t%d\t%s\t%s\n", status.Certificate.ID, status.Certificate.Name, date(status.Certificate.ExpiresAt), status.LiveProfileCount, held, note)
 	}
 	table.Flush()
 	if distribution == 0 {
@@ -181,6 +185,7 @@ type statusJSON struct {
 	ExpiryWindowDays      int               `json:"expiryWindowDays"`
 	AdHocDeviceCount      int               `json:"adHocDeviceCount"`
 	NeedsAction           bool              `json:"needsAction"`
+	VaultsChecked         bool              `json:"vaultsChecked"`
 	Certificates          []certificateJSON `json:"certificates"`
 	Profiles              []profileJSON     `json:"profiles"`
 	Findings              []findingJSON     `json:"findings"`
@@ -196,6 +201,7 @@ type certificateJSON struct {
 	ExpiresAt        time.Time `json:"expiresAt"`
 	LiveProfileCount int       `json:"liveProfileCount"`
 	ExpiresSoon      bool      `json:"expiresSoon"`
+	HeldInVault      bool      `json:"heldInVault"`
 }
 
 type profileJSON struct {
@@ -254,6 +260,7 @@ func renderStatusJSON(out io.Writer, report signing.Report) error {
 		ExpiryWindowDays:      int(report.Policy.ExpiryWindow.Hours() / 24),
 		AdHocDeviceCount:      report.AdHocDeviceCount,
 		NeedsAction:           report.NeedsAction(),
+		VaultsChecked:         report.VaultsChecked,
 		Certificates:          []certificateJSON{},
 		Profiles:              []profileJSON{},
 		Findings:              []findingJSON{},
@@ -264,7 +271,7 @@ func renderStatusJSON(out io.Writer, report signing.Report) error {
 		certificate := status.Certificate
 		document.Certificates = append(document.Certificates, certificateJSON{
 			ID: certificate.ID, Name: certificate.Name, Type: string(certificate.Type), SerialNumber: certificate.SerialNumber,
-			ExpiresAt: certificate.ExpiresAt.UTC(), LiveProfileCount: status.LiveProfileCount, ExpiresSoon: status.ExpiresSoon,
+			ExpiresAt: certificate.ExpiresAt.UTC(), LiveProfileCount: status.LiveProfileCount, ExpiresSoon: status.ExpiresSoon, HeldInVault: status.Held,
 		})
 	}
 	for _, status := range report.Profiles {

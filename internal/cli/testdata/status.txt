@@ -1,8 +1,8 @@
 Team TEAM123456 · checked 2026-10-26 12:00 UTC · renewal window 45 days · 3 Ad Hoc devices
 
 Distribution certificates
-  ID       NAME                         EXPIRES     LIVE PROFILES  NOTE
-  NEWCERT  Apple Distribution: Example  2027-10-01  3
+  ID       NAME                         EXPIRES     LIVE PROFILES  IN VAULT  NOTE
+  NEWCERT  Apple Distribution: Example  2027-10-01  3              yes
 
 Profiles · 6 expected, 4 need action
   PROFILE                       KIND       STATE    EXPIRES     NOTE

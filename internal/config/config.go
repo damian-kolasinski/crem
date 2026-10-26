@@ -27,6 +27,7 @@ type Config struct {
 	Path            string
 	Manifest        signing.Manifest
 	AppStoreConnect AppStoreConnect
+	Vaults          []Vault
 }
 
 type file struct {
@@ -35,6 +36,17 @@ type file struct {
 	Profiles        []profileSpec   `yaml:"profiles"`
 	Apps            []app           `yaml:"apps"`
 	Cleanup         *scope          `yaml:"cleanup"`
+	Vaults          []vaultEntry    `yaml:"vaults"`
+}
+
+type vaultEntry struct {
+	Local *struct {
+		Path string `yaml:"path"`
+	} `yaml:"local"`
+	OnePassword *struct {
+		Vault   string `yaml:"vault"`
+		Account string `yaml:"account"`
+	} `yaml:"1password"`
 }
 
 type appStoreConnect struct {
@@ -279,8 +291,23 @@ func Parse(data []byte) (Config, error) {
 		secretOwners[target.Secret] = target.BundleID
 	}
 
+	var vaults []Vault
+	for index, entry := range raw.Vaults {
+		at := fmt.Sprintf("vaults[%d]", index)
+		switch {
+		case (entry.Local == nil) == (entry.OnePassword == nil):
+			problem("%s: set exactly one of local or 1password", at)
+		case entry.Local != nil:
+			vaults = append(vaults, Vault{Local: &LocalVault{Path: entry.Local.Path}})
+		case entry.OnePassword.Vault == "":
+			problem("%s.1password.vault: name the 1Password vault", at)
+		default:
+			vaults = append(vaults, Vault{OnePassword: &OnePasswordVault{Vault: entry.OnePassword.Vault, Account: entry.OnePassword.Account}})
+		}
+	}
+
 	if len(problems) > 0 {
 		return Config{}, errors.New(strings.Join(problems, "\n"))
 	}
-	return Config{Manifest: manifest, AppStoreConnect: connect}, nil
+	return Config{Manifest: manifest, AppStoreConnect: connect, Vaults: vaults}, nil
 }

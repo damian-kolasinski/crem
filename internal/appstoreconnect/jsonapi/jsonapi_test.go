@@ -112,7 +112,7 @@ func TestReadsAreRetriedButWritesAreNot(t *testing.T) {
 		t.Fatalf("delays = %v", delays)
 	}
 
-	if _, err := client.do(context.Background(), http.MethodPost, client.resolve("/v1/certificates", nil), map[string]string{}); err == nil || calls[http.MethodPost] != 1 {
+	if _, err := client.Post(context.Background(), "/v1/certificates", map[string]string{}); err == nil || calls[http.MethodPost] != 1 {
 		t.Fatalf("post err = %v after %d calls", err, calls[http.MethodPost])
 	}
 }

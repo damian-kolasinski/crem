@@ -188,3 +188,65 @@ func TestPrivateKeyLookupOrder(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestVaults(t *testing.T) {
+	config, err := Parse([]byte(valid + `
+vaults:
+  - local: {}
+  - local:
+      path: ~/signing
+  - 1password:
+      vault: Mobile
+      account: work
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(config.Vaults) != 3 || config.Vaults[1].Local.Path != "~/signing" || config.Vaults[2].OnePassword.Account != "work" {
+		t.Fatalf("vaults = %+v", config.Vaults)
+	}
+
+	_, err = Parse([]byte(valid + `
+vaults:
+  - local: {}
+    1password: {vault: Mobile}
+  - 1password: {}
+`))
+	for _, want := range []string{"vaults[0]: set exactly one of local or 1password", "vaults[1].1password.vault: name the 1Password vault"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("want %q, got %v", want, err)
+		}
+	}
+}
+
+func TestLocalVaultDirectoryStaysOutsideTheRepository(t *testing.T) {
+	home, _ := filepath.EvalSymlinks(t.TempDir())
+	repository, _ := filepath.EvalSymlinks(t.TempDir())
+	configDir := filepath.Join(repository, "ios")
+	for _, directory := range []string{filepath.Join(repository, ".git"), configDir} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(home, "sneaky")
+	if err := os.Symlink(repository, link); err != nil {
+		t.Fatal(err)
+	}
+	environment := Environment{HomeDir: home, ConfigDir: configDir}
+
+	if directory, err := (LocalVault{}).Directory("TEAM123456", environment); err != nil || directory != filepath.Join(home, ".crem", "TEAM123456") {
+		t.Fatalf("default = %q, %v", directory, err)
+	}
+	upperRepository := filepath.Join(filepath.Dir(repository), strings.ToUpper(filepath.Base(repository)))
+	if _, err := os.Stat(upperRepository); err == nil {
+		// Case-insensitive file system: a differently cased path must still be caught.
+		if _, err := (LocalVault{Path: filepath.Join(upperRepository, "vault")}).Directory("TEAM123456", environment); err == nil {
+			t.Error("accepted a differently cased path into the repository")
+		}
+	}
+	for _, inside := range []string{"signing", "../secrets", "~/sneaky/vault"} {
+		if _, err := (LocalVault{Path: inside}).Directory("TEAM123456", environment); err == nil || !strings.Contains(err.Error(), "inside the repository") {
+			t.Errorf("%s: err = %v", inside, err)
+		}
+	}
+}

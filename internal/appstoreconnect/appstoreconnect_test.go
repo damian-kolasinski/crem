@@ -2,6 +2,7 @@ package appstoreconnect
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -77,6 +78,38 @@ func TestAdHocDevicesKeepOnlyAdHocClasses(t *testing.T) {
 
 	if err != nil || len(devices) != 2 || devices[0].ID != "D1" || devices[1].ID != "D3" {
 		t.Fatalf("devices = %v, %v", devices, err)
+	}
+}
+
+func TestCreateCertificateSendsTheCSRAndReturnsTheDER(t *testing.T) {
+	var body struct {
+		Data struct {
+			Type       string            `json:"type"`
+			Attributes map[string]string `json:"attributes"`
+		} `json:"data"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/certificates" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"data": {"type": "certificates", "id": "NEW", "attributes": {
+			"name": "Apple Distribution: Example", "certificateType": "DISTRIBUTION", "serialNumber": "AB12",
+			"expirationDate": "2027-10-26T12:00:00.000+00:00", "certificateContent": "AAEC"}}}`)
+	}))
+	t.Cleanup(server.Close)
+	api, _ := jsonapi.New(server.URL, staticToken{}, server.Client())
+
+	created, der, err := New(api).CreateCertificate(context.Background(), []byte("-----BEGIN CERTIFICATE REQUEST-----"))
+
+	if err != nil || created.ID != "NEW" || created.SerialNumber != "AB12" || string(der) != "\x00\x01\x02" {
+		t.Fatalf("created = %+v, der = %v, err = %v", created, der, err)
+	}
+	if attributes := body.Data.Attributes; body.Data.Type != "certificates" || attributes["certificateType"] != "DISTRIBUTION" || attributes["csrContent"] != "-----BEGIN CERTIFICATE REQUEST-----" {
+		t.Fatalf("attributes = %v", attributes)
 	}
 }
 

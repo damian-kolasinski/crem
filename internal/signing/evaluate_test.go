@@ -223,6 +223,27 @@ func TestReplacedCertificateIsACandidateButNewestIsNot(t *testing.T) {
 	}
 }
 
+func TestOnlyCertificatesHeldInAVaultAreUsableOnceVaultsAreChecked(t *testing.T) {
+	snapshot := healthySnapshot()
+	snapshot.VaultsChecked = true
+
+	report := Evaluate(testManifest(), snapshot, policy())
+
+	want := []FindingCode{ProfileNeedsNewCertificate, ProfileNeedsNewCertificate, ProfileNeedsNewCertificate, ProfileNeedsNewCertificate, NoHealthyDistributionCertificate}
+	if got := codes(report); !slices.Equal(got, want) {
+		t.Fatalf("findings = %v, want %v", got, want)
+	}
+	if detail := report.Findings[4].Detail; detail != "none valid beyond 45 days with its identity in a vault" {
+		t.Fatalf("detail = %q", detail)
+	}
+
+	snapshot.HeldCertificateIDs = map[string]bool{"CERT": true}
+	report = Evaluate(testManifest(), snapshot, policy())
+	if len(report.Findings) != 0 || !report.Certificates[0].Held {
+		t.Fatalf("findings = %v, held = %v", report.Findings, report.Certificates[0].Held)
+	}
+}
+
 func TestScope(t *testing.T) {
 	scope := Scope{Include: []string{"com.example"}, Exclude: []string{"com.example.other"}}
 	cases := map[string]bool{

@@ -4,6 +4,7 @@
   "expiryWindowDays": 45,
   "adHocDeviceCount": 3,
   "needsAction": true,
+  "vaultsChecked": true,
   "certificates": [
     {
       "id": "NEWCERT",
@@ -12,7 +13,8 @@
       "serialNumber": "AB12",
       "expiresAt": "2027-10-01T12:00:00Z",
       "liveProfileCount": 3,
-      "expiresSoon": false
+      "expiresSoon": false,
+      "heldInVault": true
     },
     {
       "id": "DEVCERT",
@@ -21,7 +23,8 @@
       "serialNumber": "",
       "expiresAt": "2027-05-14T12:00:00Z",
       "liveProfileCount": 0,
-      "expiresSoon": false
+      "expiresSoon": false,
+      "heldInVault": false
     }
   ],
   "profiles": [

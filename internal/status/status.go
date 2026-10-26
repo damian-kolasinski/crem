@@ -3,6 +3,7 @@ package status
 
 import (
 	"context"
+	"fmt"
 
 	"golang.org/x/sync/errgroup"
 
@@ -18,16 +19,44 @@ type Portal interface {
 	ProfileDevices(ctx context.Context, profileID string) ([]signing.Device, error)
 }
 
-// Check reads the team's signing state and evaluates it against the manifest.
-func Check(ctx context.Context, portal Portal, manifest signing.Manifest, policy signing.Policy) (signing.Report, error) {
+// Vault lists the identities a vault holds.
+type Vault interface {
+	Describe() string
+	List(ctx context.Context, team string) ([]string, error)
+}
+
+// Result is a report with the vaults that could not be read.
+type Result struct {
+	Report signing.Report
+	// VaultErrors are vaults that could not be read. Unless every vault was read, the
+	// report does not require certificates to be held in a vault, to avoid false alarms.
+	VaultErrors []error
+}
+
+// Check reads the team's signing state and its vaults, and evaluates them against the manifest.
+func Check(ctx context.Context, portal Portal, vaults []Vault, manifest signing.Manifest, policy signing.Policy) (Result, error) {
 	var snapshot signing.Snapshot
+	var result Result
+	snapshot.HeldCertificateIDs = map[string]bool{}
+	for _, vault := range vaults {
+		ids, err := vault.List(ctx, manifest.Team)
+		if err != nil {
+			result.VaultErrors = append(result.VaultErrors, fmt.Errorf("%s: %w", vault.Describe(), err))
+			continue
+		}
+		for _, id := range ids {
+			snapshot.HeldCertificateIDs[id] = true
+		}
+	}
+	snapshot.VaultsChecked = len(vaults) > 0 && len(result.VaultErrors) == 0
+
 	group, groupContext := errgroup.WithContext(ctx)
 	group.Go(func() (err error) { snapshot.Certificates, err = portal.Certificates(groupContext); return })
 	group.Go(func() (err error) { snapshot.BundleIDs, err = portal.BundleIDs(groupContext); return })
 	group.Go(func() (err error) { snapshot.Profiles, err = portal.Profiles(groupContext); return })
 	group.Go(func() (err error) { snapshot.AdHocDevices, err = portal.AdHocDevices(groupContext); return })
 	if err := group.Wait(); err != nil {
-		return signing.Report{}, err
+		return Result{}, err
 	}
 
 	var adHocProfileIDs []string
@@ -52,12 +81,13 @@ func Check(ctx context.Context, portal Portal, manifest signing.Manifest, policy
 		})
 	}
 	if err := group.Wait(); err != nil {
-		return signing.Report{}, err
+		return Result{}, err
 	}
 	snapshot.ProfileDevices = make(map[string][]string, len(adHocProfileIDs))
 	for index, id := range adHocProfileIDs {
 		snapshot.ProfileDevices[id] = devices[index]
 	}
 
-	return signing.Evaluate(manifest, snapshot, policy), nil
+	result.Report = signing.Evaluate(manifest, snapshot, policy)
+	return result, nil
 }

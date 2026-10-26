@@ -17,6 +17,17 @@ type Snapshot struct {
 	AdHocDevices []Device
 	// ProfileDevices holds the device IDs of the profiles they were fetched for, by profile ID.
 	ProfileDevices map[string][]string
+	// VaultsChecked is true when crem's vaults were read; HeldCertificateIDs then lists
+	// the certificates whose identities they hold.
+	VaultsChecked      bool
+	HeldCertificateIDs map[string]bool
+}
+
+// usable reports whether crem can sign with the certificate past the expiry window:
+// a valid distribution certificate whose identity, when vaults were checked, a vault holds.
+func (s Snapshot) usable(certificate Certificate, policy Policy) bool {
+	return certificate.Type.IsDistribution() && !policy.expiresSoon(certificate.ExpiresAt) &&
+		(!s.VaultsChecked || s.HeldCertificateIDs[certificate.ID])
 }
 
 // Policy sets how far ahead an evaluation looks.
@@ -74,6 +85,8 @@ type CertificateStatus struct {
 	Certificate      Certificate
 	LiveProfileCount int
 	ExpiresSoon      bool
+	// Held is true when a vault holds the certificate's identity; always false when vaults were not checked.
+	Held bool
 }
 
 // ProfileStatus is an expected profile with the live profile that currently fulfils it.
@@ -132,6 +145,8 @@ type Report struct {
 	CleanupProfiles []ProfileCandidate
 	// CleanupCertificates are distribution certificates no live profile uses, except the newest.
 	CleanupCertificates []Certificate
+	// VaultsChecked is true when the vaults were read, so CertificateStatus.Held is meaningful.
+	VaultsChecked bool
 	// UntouchedProfileCount counts profiles crem never touches: outside the cleanup scope, of
 	// kinds the manifest does not configure, or for wildcard App IDs.
 	UntouchedProfileCount int
@@ -173,7 +188,7 @@ func matchingProfiles(profiles []Profile, expected ExpectedProfile, keep func(Pr
 
 // Evaluate compares what the manifest expects with what the snapshot reports.
 func Evaluate(manifest Manifest, snapshot Snapshot, policy Policy) Report {
-	report := Report{Team: manifest.Team, Policy: policy, AdHocDeviceCount: len(snapshot.AdHocDevices)}
+	report := Report{Team: manifest.Team, Policy: policy, AdHocDeviceCount: len(snapshot.AdHocDevices), VaultsChecked: snapshot.VaultsChecked}
 	certificatesByID := make(map[string]Certificate, len(snapshot.Certificates))
 	for _, certificate := range snapshot.Certificates {
 		certificatesByID[certificate.ID] = certificate
@@ -236,7 +251,7 @@ func Evaluate(manifest Manifest, snapshot Snapshot, policy Policy) Report {
 		}
 		if !slices.ContainsFunc(current.CertificateIDs, func(id string) bool {
 			certificate, known := certificatesByID[id]
-			return known && !policy.expiresSoon(certificate.ExpiresAt)
+			return known && snapshot.usable(certificate, policy)
 		}) {
 			issue(ProfileNeedsNewCertificate, "")
 		}
@@ -266,7 +281,7 @@ func Evaluate(manifest Manifest, snapshot Snapshot, policy Policy) Report {
 				liveCount++
 			}
 		}
-		status := CertificateStatus{Certificate: certificate, LiveProfileCount: liveCount, ExpiresSoon: policy.expiresSoon(certificate.ExpiresAt)}
+		status := CertificateStatus{Certificate: certificate, LiveProfileCount: liveCount, ExpiresSoon: policy.expiresSoon(certificate.ExpiresAt), Held: snapshot.HeldCertificateIDs[certificate.ID]}
 		report.Certificates = append(report.Certificates, status)
 		if certificate.Type.IsDistribution() {
 			distribution = append(distribution, certificate)
@@ -275,8 +290,12 @@ func Evaluate(manifest Manifest, snapshot Snapshot, policy Policy) Report {
 			}
 		}
 	}
-	if !slices.ContainsFunc(distribution, func(certificate Certificate) bool { return !policy.expiresSoon(certificate.ExpiresAt) }) {
-		addFinding(NoHealthyDistributionCertificate, manifest.Team, fmt.Sprintf("none valid beyond %d days", int(policy.ExpiryWindow.Hours()/24)))
+	if !slices.ContainsFunc(distribution, func(certificate Certificate) bool { return snapshot.usable(certificate, policy) }) {
+		detail := fmt.Sprintf("none valid beyond %d days", int(policy.ExpiryWindow.Hours()/24))
+		if snapshot.VaultsChecked {
+			detail += " with its identity in a vault"
+		}
+		addFinding(NoHealthyDistributionCertificate, manifest.Team, detail)
 	}
 
 	for _, profile := range snapshot.Profiles {

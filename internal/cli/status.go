@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -35,11 +36,23 @@ With --check, exits with status 3 when anything needs action, for scheduled CI j
 			if err != nil {
 				return err
 			}
-			policy := signing.Policy{Now: env.now(), ExpiryWindow: time.Duration(expiryDays) * 24 * time.Hour}
-			report, err := status.Check(cmd.Context(), portal, cfg.Manifest, policy)
+			vaults, err := env.vaults(cfg)
 			if err != nil {
 				return err
 			}
+			var readers []status.Vault
+			for _, store := range vaults {
+				readers = append(readers, store)
+			}
+			policy := signing.Policy{Now: env.now(), ExpiryWindow: time.Duration(expiryDays) * 24 * time.Hour}
+			result, err := status.Check(cmd.Context(), portal, readers, cfg.Manifest, policy)
+			if err != nil {
+				return err
+			}
+			for _, vaultError := range result.VaultErrors {
+				fmt.Fprintf(cmd.ErrOrStderr(), "crem: warning: cannot read vault %v\n", vaultError)
+			}
+			report := result.Report
 			if asJSON {
 				err = renderStatusJSON(cmd.OutOrStdout(), report)
 			} else {

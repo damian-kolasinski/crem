@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -11,7 +12,8 @@ import (
 
 	"github.com/damian-kolasinski/crem/internal/config"
 	"github.com/damian-kolasinski/crem/internal/signing"
-	"github.com/damian-kolasinski/crem/internal/status"
+	"github.com/damian-kolasinski/crem/internal/vault"
+	"github.com/damian-kolasinski/crem/internal/vault/local"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -56,6 +58,9 @@ func (p fakePortal) Profiles(context.Context) ([]signing.Profile, error) {
 func (p fakePortal) AdHocDevices(context.Context) ([]signing.Device, error) {
 	return p.snapshot.AdHocDevices, nil
 }
+func (p fakePortal) CreateCertificate(context.Context, []byte) (signing.Certificate, []byte, error) {
+	return signing.Certificate{}, nil, errors.New("not implemented")
+}
 func (p fakePortal) ProfileDevices(_ context.Context, id string) ([]signing.Device, error) {
 	var devices []signing.Device
 	for _, deviceID := range p.snapshot.ProfileDevices[id] {
@@ -97,14 +102,19 @@ func runStatus(t *testing.T, args ...string) (int, string, string) {
 	if err := os.WriteFile(filepath.Join(directory, config.FileName), []byte(testConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	store := local.New(filepath.Join(t.TempDir(), "vault"))
+	if err := store.Save(context.Background(), vault.Entry{Team: "TEAM123456", CertificateID: "NEWCERT", P12: []byte("p12"), Password: "password"}); err != nil {
+		t.Fatal(err)
+	}
 	env := environment{
 		workingDir: directory,
 		homeDir:    t.TempDir(),
 		getenv:     func(string) string { return "" },
 		now:        func() time.Time { return testNow },
-		portal: func(config.Config) (status.Portal, error) {
+		portal: func(config.Config) (portal, error) {
 			return fakePortal{snapshot: testSnapshot()}, nil
 		},
+		vaults: func(config.Config) ([]vault.Vault, error) { return []vault.Vault{store}, nil },
 	}
 	var out, errOut bytes.Buffer
 	code := run(append([]string{"status"}, args...), Streams{Out: &out, Err: &errOut}, "dev", env)

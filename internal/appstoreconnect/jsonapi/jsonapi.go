@@ -97,6 +97,13 @@ type Document struct {
 	} `json:"meta"`
 }
 
+// Resource decodes a single-resource document's data.
+func (d Document) Resource() (Resource, error) {
+	var resource Resource
+	err := json.Unmarshal(d.Data, &resource)
+	return resource, err
+}
+
 // Error is an API request that failed.
 type Error struct {
 	Method string
@@ -139,6 +146,11 @@ func (c *Client) GetAll(ctx context.Context, path string, query url.Values) (dat
 		}
 	}
 	return data, included, nil
+}
+
+// Post creates a resource. It is never retried: a failed create may still have been applied.
+func (c *Client) Post(ctx context.Context, path string, body any) (Document, error) {
+	return c.do(ctx, http.MethodPost, c.resolve(path, nil), body)
 }
 
 func (c *Client) resolve(path string, query url.Values) *url.URL {

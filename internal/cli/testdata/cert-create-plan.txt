@@ -1,0 +1,11 @@
+Plan: create an Apple Distribution certificate for team TEAM123456
+
+Existing distribution certificates
+  ID       NAME                         EXPIRES     IN VAULT
+  NEWCERT  Apple Distribution: Example  2027-10-01  no
+
+The new identity will be saved to
+  local /vaults/team
+
+Apple limits how many distribution certificates a team can have and emails the team about each new one.
+Run again with --execute to create it.

@@ -2,12 +2,15 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,8 +18,12 @@ import (
 	"github.com/damian-kolasinski/crem/internal/appstoreconnect"
 	"github.com/damian-kolasinski/crem/internal/appstoreconnect/auth"
 	"github.com/damian-kolasinski/crem/internal/appstoreconnect/jsonapi"
+	"github.com/damian-kolasinski/crem/internal/certificate"
 	"github.com/damian-kolasinski/crem/internal/config"
 	"github.com/damian-kolasinski/crem/internal/status"
+	"github.com/damian-kolasinski/crem/internal/vault"
+	"github.com/damian-kolasinski/crem/internal/vault/local"
+	"github.com/damian-kolasinski/crem/internal/vault/onepassword"
 )
 
 // Streams are the outputs a command writes to.
@@ -32,7 +39,17 @@ type environment struct {
 	getenv     func(string) string
 	now        func() time.Time
 	// portal connects to App Store Connect with the config's API key.
-	portal func(config.Config) (status.Portal, error)
+	portal func(config.Config) (portal, error)
+	// vaults opens the config's vaults.
+	vaults func(config.Config) ([]vault.Vault, error)
+	// recovery keeps a new certificate's key until a vault holds its identity.
+	recovery func() certificate.Recovery
+}
+
+// portal is everything commands do in App Store Connect.
+type portal interface {
+	status.Portal
+	certificate.Portal
 }
 
 // exitError ends the process with a specific exit code after its message, if any, is printed.
@@ -52,14 +69,19 @@ func Run(args []string, streams Streams, version string) int {
 	}
 	homeDir, _ := os.UserHomeDir()
 	env := environment{workingDir: workingDir, homeDir: homeDir, getenv: os.Getenv, now: time.Now}
-	env.portal = func(cfg config.Config) (status.Portal, error) { return connect(cfg, env) }
+	env.portal = func(cfg config.Config) (portal, error) { return connect(cfg, env) }
+	env.vaults = func(cfg config.Config) ([]vault.Vault, error) { return openVaults(cfg, env) }
+	env.recovery = func() certificate.Recovery { return local.NewRecovery(filepath.Join(homeDir, ".crem", "recovery")) }
 	return run(args, streams, version, env)
 }
 
 func run(args []string, streams Streams, version string, env environment) int {
+	// An interrupt cancels in-flight requests instead of killing the process mid-operation.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	root := newRootCommand(streams, version, env)
 	root.SetArgs(args)
-	err := root.Execute()
+	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return 0
 	}
@@ -89,7 +111,7 @@ func newRootCommand(streams Streams, version string, env environment) *cobra.Com
 	root.SetOut(streams.Out)
 	root.SetErr(streams.Err)
 	root.PersistentFlags().String("config", "", "path to crem.yaml (default: the nearest one in this or a parent directory)")
-	root.AddCommand(newStatusCommand(env))
+	root.AddCommand(newStatusCommand(env), newCertCommand(env))
 	return root
 }
 
@@ -105,6 +127,23 @@ func loadConfig(cmd *cobra.Command, env environment) (config.Config, error) {
 		path = filepath.Join(env.workingDir, path)
 	}
 	return config.Load(path)
+}
+
+func openVaults(cfg config.Config, env environment) ([]vault.Vault, error) {
+	var vaults []vault.Vault
+	for _, configured := range cfg.Vaults {
+		switch {
+		case configured.Local != nil:
+			directory, err := configured.Local.Directory(cfg.Manifest.Team, config.Environment{HomeDir: env.homeDir, ConfigDir: filepath.Dir(cfg.Path)})
+			if err != nil {
+				return nil, err
+			}
+			vaults = append(vaults, local.New(directory))
+		case configured.OnePassword != nil:
+			vaults = append(vaults, onepassword.New(configured.OnePassword.Vault, configured.OnePassword.Account, onepassword.CLI{}))
+		}
+	}
+	return vaults, nil
 }
 
 func connect(cfg config.Config, env environment) (*appstoreconnect.Client, error) {

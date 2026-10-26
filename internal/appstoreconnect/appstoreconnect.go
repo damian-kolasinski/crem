@@ -4,6 +4,7 @@ package appstoreconnect
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -57,6 +58,69 @@ func certificate(resource jsonapi.Resource) (signing.Certificate, error) {
 		SerialNumber: attributes.SerialNumber,
 		ExpiresAt:    expiresAt,
 	}, nil
+}
+
+// CreateCertificate creates an Apple Distribution certificate for the PEM-encoded
+// certificate signing request and returns it with its DER encoding.
+func (c *Client) CreateCertificate(ctx context.Context, csrPEM []byte) (signing.Certificate, []byte, error) {
+	document, err := c.api.Post(ctx, "/v1/certificates", map[string]any{
+		"data": map[string]any{
+			"type": "certificates",
+			"attributes": map[string]string{
+				"certificateType": string(signing.CertificateTypeDistribution),
+				"csrContent":      string(csrPEM),
+			},
+		},
+	})
+	if err != nil {
+		return signing.Certificate{}, nil, err
+	}
+	resource, err := document.Resource()
+	if err != nil {
+		return signing.Certificate{}, nil, fmt.Errorf("App Store Connect returned an unreadable certificate: %w", err)
+	}
+	created, err := certificate(resource)
+	if err != nil {
+		// Keep the ID: the certificate exists and its key must not be forgotten.
+		return signing.Certificate{ID: resource.ID}, nil, fmt.Errorf("App Store Connect returned an unreadable certificate %s: %w", resource.ID, err)
+	}
+	var content struct {
+		CertificateContent string `json:"certificateContent"`
+	}
+	var der []byte
+	if json.Unmarshal(resource.Attributes, &content) == nil {
+		der, _ = base64.StdEncoding.DecodeString(content.CertificateContent)
+	}
+	if len(der) == 0 {
+		der, err = c.certificateContent(ctx, resource.ID)
+		if err != nil {
+			return created, nil, err
+		}
+	}
+	return created, der, nil
+}
+
+// certificateContent fetches a certificate's DER encoding.
+func (c *Client) certificateContent(ctx context.Context, id string) ([]byte, error) {
+	data, _, err := c.api.GetAll(ctx, "/v1/certificates", url.Values{
+		"filter[id]":           {id},
+		"fields[certificates]": {"certificateContent"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, resource := range data {
+		var content struct {
+			CertificateContent string `json:"certificateContent"`
+		}
+		if resource.ID != id || json.Unmarshal(resource.Attributes, &content) != nil {
+			continue
+		}
+		if der, err := base64.StdEncoding.DecodeString(content.CertificateContent); err == nil && len(der) > 0 {
+			return der, nil
+		}
+	}
+	return nil, fmt.Errorf("App Store Connect returned certificate %s without readable content", id)
 }
 
 // BundleIDs lists the team's registered bundle IDs.
