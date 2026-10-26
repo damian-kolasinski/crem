@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -161,21 +160,7 @@ func verify(content []byte, expected signing.ExpectedProfile, team, fingerprint 
 	if err != nil {
 		return err
 	}
-	switch {
-	case profile.Name != expected.Name:
-		return fmt.Errorf("named %q, not %q", profile.Name, expected.Name)
-	case profile.TeamID != team:
-		return fmt.Errorf("belongs to team %s", profile.TeamID)
-	case profile.BundleID != expected.Target.BundleID:
-		return fmt.Errorf("is for %s", profile.BundleID)
-	case profile.HasDevices || profile.GetTaskAllow:
-		return errors.New("is not an App Store distribution profile")
-	case !profile.ExpiresAt.After(now):
-		return errors.New("has expired")
-	case !slices.Contains(profile.CertificateSHA, fingerprint):
-		return errors.New("does not contain the certificate being pushed")
-	}
-	return nil
+	return profile.Check(provisioning.Expectation{Name: expected.Name, TeamID: team, BundleID: expected.Target.BundleID, CertificateSHA: fingerprint}, now)
 }
 
 // Written is a secret Execute wrote.

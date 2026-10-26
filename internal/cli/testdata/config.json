@@ -1,0 +1,54 @@
+{
+  "targets": [
+    {
+      "app": "Demo",
+      "environment": "Production",
+      "component": "app",
+      "bundleId": "com.example.demo",
+      "secret": "PROFILE_DEMO",
+      "profiles": [
+        {
+          "kind": "app-store",
+          "name": "com.example.demo"
+        },
+        {
+          "kind": "ad-hoc",
+          "name": "AdHoc com.example.demo"
+        }
+      ]
+    },
+    {
+      "app": "Demo",
+      "environment": "Production",
+      "component": "share",
+      "bundleId": "com.example.demo.share",
+      "profiles": [
+        {
+          "kind": "app-store",
+          "name": "com.example.demo.share"
+        },
+        {
+          "kind": "ad-hoc",
+          "name": "AdHoc com.example.demo.share"
+        }
+      ]
+    },
+    {
+      "app": "Tool",
+      "environment": "Production",
+      "component": "app",
+      "bundleId": "com.example.tool",
+      "profiles": [
+        {
+          "kind": "app-store",
+          "name": "com.example.tool"
+        },
+        {
+          "kind": "ad-hoc",
+          "name": "AdHoc com.example.tool"
+        }
+      ]
+    }
+  ],
+  "team": "TEAM123456"
+}

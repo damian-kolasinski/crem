@@ -180,7 +180,7 @@ func TestPushWritesTheIdentityAndEveryProfile(t *testing.T) {
 func TestPushRefusesProfilesCIcouldNotSignWith(t *testing.T) {
 	ctx := context.Background()
 	cases := map[string]func(*team){
-		"com.example.demo.share (P2): does not contain the certificate being pushed": func(portal *team) {
+		"com.example.demo.share (P2): does not contain the expected certificate": func(portal *team) {
 			portal.content["P2"] = profileFile(t, "com.example.demo.share", "com.example.demo.share", []byte("another certificate"))
 		},
 		"com.example.demo (P1) is signed with another certificate": func(portal *team) {
