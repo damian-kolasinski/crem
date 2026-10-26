@@ -1,0 +1,8 @@
+Plan: delete 3 dead profiles
+
+  ID  NAME                    BUNDLE ID           EXPIRES     WHY
+  P1  com.example.demo        com.example.demo    2026-10-24  expired, certificates revoked or expired, superseded
+  P2  AdHoc com.example.demo  com.example.demo    2026-10-24  expired, certificates revoked or expired, superseded
+  P5  Old manual profile      com.example.legacy  2026-07-18  expired, certificates revoked or expired, unmanaged bundle id, non conventional name
+
+Run again with --execute once CI has built with the new signing.

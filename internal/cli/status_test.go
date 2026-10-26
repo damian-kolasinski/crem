@@ -71,6 +71,9 @@ func (p fakePortal) CreateProfile(context.Context, signing.NewProfile) (signing.
 func (p fakePortal) ProfileContent(context.Context, string) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
+func (p fakePortal) RevokeCertificate(context.Context, string) error {
+	return errors.New("not implemented")
+}
 func (p fakePortal) DeleteProfile(context.Context, string) error {
 	return errors.New("not implemented")
 }

@@ -100,6 +100,11 @@ func (c *Client) CreateCertificate(ctx context.Context, csrPEM []byte) (signing.
 	return created, der, nil
 }
 
+// RevokeCertificate revokes a certificate.
+func (c *Client) RevokeCertificate(ctx context.Context, id string) error {
+	return c.api.Delete(ctx, "/v1/certificates/"+url.PathEscape(id))
+}
+
 // certificateContent fetches a certificate's DER encoding.
 func (c *Client) certificateContent(ctx context.Context, id string) ([]byte, error) {
 	data, _, err := c.api.GetAll(ctx, "/v1/certificates", url.Values{

@@ -19,6 +19,7 @@ import (
 	"github.com/damian-kolasinski/crem/internal/appstoreconnect/auth"
 	"github.com/damian-kolasinski/crem/internal/appstoreconnect/jsonapi"
 	"github.com/damian-kolasinski/crem/internal/certificate"
+	"github.com/damian-kolasinski/crem/internal/cleanup"
 	"github.com/damian-kolasinski/crem/internal/config"
 	"github.com/damian-kolasinski/crem/internal/publish"
 	"github.com/damian-kolasinski/crem/internal/renewal"
@@ -57,6 +58,7 @@ type portal interface {
 	certificate.Portal
 	renewal.Portal
 	publish.Portal
+	cleanup.Portal
 }
 
 // exitError ends the process with a specific exit code after its message, if any, is printed.
@@ -119,7 +121,7 @@ func newRootCommand(streams Streams, version string, env environment) *cobra.Com
 	root.SetOut(streams.Out)
 	root.SetErr(streams.Err)
 	root.PersistentFlags().String("config", "", "path to crem.yaml (default: the nearest one in this or a parent directory)")
-	root.AddCommand(newStatusCommand(env), newCertCommand(env), newProfilesCommand(env), newSecretsCommand(env), newVaultCommand(env))
+	root.AddCommand(newStatusCommand(env), newCertCommand(env), newProfilesCommand(env), newSecretsCommand(env), newVaultCommand(env), newCleanupCommand(env))
 	return root
 }
 

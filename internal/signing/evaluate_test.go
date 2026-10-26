@@ -244,6 +244,32 @@ func TestOnlyCertificatesHeldInAVaultAreUsableOnceVaultsAreChecked(t *testing.T)
 	}
 }
 
+func TestLiveProfilesWithUnlistedCertificatesAreNotDead(t *testing.T) {
+	snapshot := healthySnapshot()
+	snapshot.Profiles = append(snapshot.Profiles, profile("XC", "XC Ad Hoc demo", ProfileTypeIOSAdHoc, "com.example.demo", days(300), "CLOUD_MANAGED"))
+
+	report := Evaluate(testManifest(), snapshot, policy())
+
+	if len(report.CleanupProfiles) != 1 || report.CleanupProfiles[0].IsDead() {
+		t.Fatalf("candidates = %+v", report.CleanupProfiles)
+	}
+}
+
+func TestHeldCertificatesAreNeverRevocationCandidates(t *testing.T) {
+	snapshot := healthySnapshot()
+	snapshot.Profiles = nil
+	snapshot.Certificates = []Certificate{
+		{ID: "HELD", Type: CertificateTypeDistribution, ExpiresAt: days(364)},
+		{ID: "FOREIGN", Type: CertificateTypeIOSDistribution, ExpiresAt: days(400)},
+	}
+	snapshot.VaultsChecked = true
+	snapshot.HeldCertificateIDs = map[string]bool{"HELD": true}
+
+	if candidates := Evaluate(testManifest(), snapshot, policy()).CleanupCertificates; len(candidates) != 0 {
+		t.Fatalf("candidates = %v", candidates)
+	}
+}
+
 func TestScope(t *testing.T) {
 	scope := Scope{Include: []string{"com.example"}, Exclude: []string{"com.example.other"}}
 	cases := map[string]bool{

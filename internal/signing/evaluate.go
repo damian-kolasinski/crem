@@ -128,10 +128,12 @@ type ProfileCandidate struct {
 	Reasons []CleanupReason
 }
 
-// IsDead reports whether the profile can no longer sign anything.
+// IsDead reports whether the profile can no longer sign anything: it is expired or not active.
+// A certificate missing from App Store Connect's listing alone does not make it dead, since the
+// listing omits some certificates, such as the ones Xcode manages in the cloud.
 func (c ProfileCandidate) IsDead() bool {
 	return slices.ContainsFunc(c.Reasons, func(reason CleanupReason) bool {
-		return reason == ReasonNotActive || reason == ReasonExpired || reason == ReasonCertificatesGone
+		return reason == ReasonNotActive || reason == ReasonExpired
 	})
 }
 
@@ -335,14 +337,15 @@ func Evaluate(manifest Manifest, snapshot Snapshot, policy Policy) Report {
 	}
 
 	// A certificate any live profile uses is never a candidate, whoever owns the profile: revoking it
-	// would stop that profile from signing. Nor is the newest, which a rotation may have just created.
+	// would stop that profile from signing. Nor is the newest, which a rotation may have just created,
+	// nor one whose identity a vault holds, since crem may sign with it.
 	if len(distribution) > 0 {
 		newest := slices.MaxFunc(distribution, func(left, right Certificate) int { return left.ExpiresAt.Compare(right.ExpiresAt) })
 		for _, certificate := range distribution {
 			inUse := slices.ContainsFunc(snapshot.Profiles, func(profile Profile) bool {
 				return profile.IsLive(policy.Now) && profile.UsesCertificate(certificate.ID)
 			})
-			if certificate.ID != newest.ID && !inUse {
+			if certificate.ID != newest.ID && !inUse && !snapshot.HeldCertificateIDs[certificate.ID] {
 				report.CleanupCertificates = append(report.CleanupCertificates, certificate)
 			}
 		}
