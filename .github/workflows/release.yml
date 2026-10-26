@@ -61,6 +61,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      attestations: write
     outputs:
       bundle: ${{ steps.packslip.outputs.bundle }}
     steps:
@@ -73,10 +74,8 @@ jobs:
         with:
           artifacts: dist/crem-*.tar.gz
           bin: crem
-          # Artifact attestations need GitHub Enterprise Cloud in a private
-          # repository. Turn them on once it is public, and keep them on: an
-          # installer may refuse a release that drops provenance earlier ones had.
-          attest: false
+          # Attestations stay on for every release: an installer may refuse a
+          # release that drops provenance earlier ones had.
           upload: false
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

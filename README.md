@@ -12,8 +12,6 @@ Install the signed release with [mise](https://mise.jdx.dev), which verifies its
 mise use -g packslip:damian-kolasinski/crem
 ```
 
-While the repository is private, mise needs a GitHub token that can read it, such as `GITHUB_TOKEN=$(gh auth token)`.
-
 ## License
 
 [MIT](LICENSE)
