@@ -20,7 +20,7 @@ func newProfilesCommand(env environment) *cobra.Command {
 		Short: "Manage provisioning profiles",
 		Args:  cobra.NoArgs,
 	}
-	command.AddCommand(newProfilesRenewCommand(env))
+	command.AddCommand(newProfilesRenewCommand(env), newProfilesDownloadCommand(env))
 	return command
 }
 

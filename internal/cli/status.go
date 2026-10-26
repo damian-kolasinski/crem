@@ -8,13 +8,14 @@ import (
 
 	"github.com/damian-kolasinski/crem/internal/signing"
 	"github.com/damian-kolasinski/crem/internal/status"
+	"github.com/damian-kolasinski/crem/internal/vault"
 )
 
 // exitNeedsAction is the exit code of `status --check` when signing needs action.
 const exitNeedsAction = 3
 
 func newStatusCommand(env environment) *cobra.Command {
-	var asJSON, check bool
+	var asJSON, check, skipVaults bool
 	var expiryDays int
 	command := &cobra.Command{
 		Use:   "status",
@@ -36,9 +37,11 @@ With --check, exits with status 3 when anything needs action, for scheduled CI j
 			if err != nil {
 				return err
 			}
-			vaults, err := env.vaults(cfg)
-			if err != nil {
-				return err
+			var vaults []vault.Vault
+			if !skipVaults {
+				if vaults, err = env.vaults(cfg); err != nil {
+					return err
+				}
 			}
 			var readers []status.Vault
 			for _, store := range vaults {
@@ -69,6 +72,7 @@ With --check, exits with status 3 when anything needs action, for scheduled CI j
 	}
 	command.Flags().BoolVar(&asJSON, "json", false, "print a JSON report")
 	command.Flags().BoolVar(&check, "check", false, "exit with status 3 when anything needs action")
+	command.Flags().BoolVar(&skipVaults, "skip-vaults", false, "do not read the vaults, as on CI, where none are reachable")
 	command.Flags().IntVar(&expiryDays, "expiry-days", 45, "renew certificates and profiles that expire within this many days")
 	return command
 }

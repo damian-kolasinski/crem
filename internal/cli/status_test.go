@@ -74,6 +74,15 @@ func (p fakePortal) ProfileContent(context.Context, string) ([]byte, error) {
 func (p fakePortal) RevokeCertificate(context.Context, string) error {
 	return errors.New("not implemented")
 }
+func (p fakePortal) BundleIDCapabilities(context.Context, string) ([]signing.Capability, error) {
+	return nil, nil
+}
+func (p fakePortal) RegisterBundleID(context.Context, string, string) error {
+	return errors.New("not implemented")
+}
+func (p fakePortal) EnableCapability(context.Context, string, signing.Capability) error {
+	return errors.New("not implemented")
+}
 func (p fakePortal) DeleteProfile(context.Context, string) error {
 	return errors.New("not implemented")
 }
