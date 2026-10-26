@@ -30,8 +30,9 @@ func (f *fakeOp) Run(_ context.Context, stdin []byte, args ...string) ([]byte, e
 		if err := json.Unmarshal(stdin, &created); err != nil {
 			return nil, err
 		}
-		// Tags come from the flag, and op assigns its own IDs to custom fields.
-		created.Tags = strings.Split(flag(args, "--tags"), ",")
+		// Like op, add the flag's tags to any the template carries; the adapter must send each once.
+		created.Tags = append(created.Tags, strings.Split(flag(args, "--tags"), ",")...)
+		// Custom field IDs may not survive, so crem also finds fields by label.
 		for index := range created.Fields {
 			if created.Fields[index].ID != "password" && created.Fields[index].ID != "notesPlain" {
 				created.Fields[index].ID = fmt.Sprintf("generated%d", index)
@@ -114,6 +115,16 @@ func TestSecretsNeverAppearInArguments(t *testing.T) {
 		if flag(call, "--account") != "work" {
 			t.Fatalf("missing account: %v", call)
 		}
+	}
+}
+
+func TestSavedItemsCarryEachTagOnce(t *testing.T) {
+	op := &fakeOp{}
+	if err := New("Mobile", "", op).Save(context.Background(), entry("TEAM123456", "CERT1")); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"crem", "crem/TEAM123456", "crem/TEAM123456/CERT1"}; !slices.Equal(op.items[0].Tags, want) {
+		t.Fatalf("tags = %v, want %v", op.items[0].Tags, want)
 	}
 }
 
