@@ -1,0 +1,6 @@
+/dist/
+/crem
+*.p12
+*.p8
+*.mobileprovision
+*.key.pem
