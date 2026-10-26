@@ -2,6 +2,7 @@ package appstoreconnect
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -72,6 +73,29 @@ func (c *Client) CreateProfile(ctx context.Context, profile signing.NewProfile) 
 		ExpiresAt:      expiresAt,
 		CertificateIDs: []string{profile.CertificateID},
 	}, nil
+}
+
+// ProfileContent downloads a provisioning profile's .mobileprovision file.
+func (c *Client) ProfileContent(ctx context.Context, id string) ([]byte, error) {
+	document, err := c.api.Get(ctx, "/v1/profiles/"+url.PathEscape(id), url.Values{"fields[profiles]": {"profileContent"}})
+	if err != nil {
+		return nil, err
+	}
+	resource, err := document.Resource()
+	if err != nil {
+		return nil, fmt.Errorf("App Store Connect returned an unreadable profile %s: %w", id, err)
+	}
+	var attributes struct {
+		ProfileContent string `json:"profileContent"`
+	}
+	if err := json.Unmarshal(resource.Attributes, &attributes); err != nil {
+		return nil, err
+	}
+	content, err := base64.StdEncoding.DecodeString(attributes.ProfileContent)
+	if err != nil || len(content) == 0 {
+		return nil, fmt.Errorf("App Store Connect returned profile %s without readable content", id)
+	}
+	return content, nil
 }
 
 // DeleteProfile deletes a provisioning profile.

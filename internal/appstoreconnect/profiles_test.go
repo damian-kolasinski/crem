@@ -67,6 +67,16 @@ func TestCreateProfileResolvesTheBundleIDAndSendsRelationships(t *testing.T) {
 	}
 }
 
+func TestProfileContent(t *testing.T) {
+	client := newTestClient(t, map[string]string{"/v1/profiles/P1": `{"data": {"type": "profiles", "id": "P1", "attributes": {"profileContent": "AAEC"}}}`})
+
+	content, err := client.ProfileContent(context.Background(), "P1")
+
+	if err != nil || string(content) != "\x00\x01\x02" {
+		t.Fatalf("content = %v, %v", content, err)
+	}
+}
+
 func TestDeleteProfile(t *testing.T) {
 	var deleted string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

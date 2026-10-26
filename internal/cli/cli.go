@@ -20,7 +20,9 @@ import (
 	"github.com/damian-kolasinski/crem/internal/appstoreconnect/jsonapi"
 	"github.com/damian-kolasinski/crem/internal/certificate"
 	"github.com/damian-kolasinski/crem/internal/config"
+	"github.com/damian-kolasinski/crem/internal/publish"
 	"github.com/damian-kolasinski/crem/internal/renewal"
+	"github.com/damian-kolasinski/crem/internal/secretstore"
 	"github.com/damian-kolasinski/crem/internal/status"
 	"github.com/damian-kolasinski/crem/internal/vault"
 	"github.com/damian-kolasinski/crem/internal/vault/local"
@@ -43,6 +45,8 @@ type environment struct {
 	portal func(config.Config) (portal, error)
 	// vaults opens the config's vaults.
 	vaults func(config.Config) ([]vault.Vault, error)
+	// secretStores opens the config's secret stores.
+	secretStores func(config.Config) ([]secretstore.Store, error)
 	// recovery keeps a new certificate's key until a vault holds its identity.
 	recovery func() certificate.Recovery
 }
@@ -52,6 +56,7 @@ type portal interface {
 	status.Portal
 	certificate.Portal
 	renewal.Portal
+	publish.Portal
 }
 
 // exitError ends the process with a specific exit code after its message, if any, is printed.
@@ -73,6 +78,7 @@ func Run(args []string, streams Streams, version string) int {
 	env := environment{workingDir: workingDir, homeDir: homeDir, getenv: os.Getenv, now: time.Now}
 	env.portal = func(cfg config.Config) (portal, error) { return connect(cfg, env) }
 	env.vaults = func(cfg config.Config) ([]vault.Vault, error) { return openVaults(cfg, env) }
+	env.secretStores = func(cfg config.Config) ([]secretstore.Store, error) { return openSecretStores(cfg, env) }
 	env.recovery = func() certificate.Recovery { return local.NewRecovery(filepath.Join(homeDir, ".crem", "recovery")) }
 	return run(args, streams, version, env)
 }
@@ -113,7 +119,7 @@ func newRootCommand(streams Streams, version string, env environment) *cobra.Com
 	root.SetOut(streams.Out)
 	root.SetErr(streams.Err)
 	root.PersistentFlags().String("config", "", "path to crem.yaml (default: the nearest one in this or a parent directory)")
-	root.AddCommand(newStatusCommand(env), newCertCommand(env), newProfilesCommand(env))
+	root.AddCommand(newStatusCommand(env), newCertCommand(env), newProfilesCommand(env), newSecretsCommand(env))
 	return root
 }
 
@@ -149,16 +155,21 @@ func openVaults(cfg config.Config, env environment) ([]vault.Vault, error) {
 }
 
 func connect(cfg config.Config, env environment) (*appstoreconnect.Client, error) {
-	keyData, source, err := cfg.AppStoreConnect.PrivateKey(config.Environment{
+	environment := config.Environment{
 		Getenv:     env.getenv,
 		HomeDir:    env.homeDir,
 		WorkingDir: env.workingDir,
 		ConfigDir:  filepath.Dir(cfg.Path),
-	})
+	}
+	credentials, err := cfg.AppStoreConnect.Resolve(environment)
 	if err != nil {
 		return nil, err
 	}
-	key, err := auth.ParseKey(cfg.AppStoreConnect.KeyID, cfg.AppStoreConnect.IssuerID, keyData)
+	keyData, source, err := credentials.PrivateKey(environment)
+	if err != nil {
+		return nil, err
+	}
+	key, err := auth.ParseKey(credentials.KeyID, credentials.IssuerID, keyData)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", source, err)
 	}

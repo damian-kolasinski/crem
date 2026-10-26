@@ -4,14 +4,11 @@ package renewal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/damian-kolasinski/crem/internal/signing"
 	"github.com/damian-kolasinski/crem/internal/status"
-	"github.com/damian-kolasinski/crem/internal/vault"
 )
 
 // Portal reads the team's signing state and creates profiles.
@@ -47,34 +44,9 @@ func Prepare(ctx context.Context, portal Portal, vaults []status.Vault, manifest
 	}
 	report := checked.Report
 	plan := Plan{VaultErrors: checked.VaultErrors}
-	// Profiles must be signed with a certificate CI can get the identity of, so the vaults decide.
-	if len(vaults) == 0 {
-		return Plan{}, errors.New("crem.yaml lists no vaults, so crem cannot tell which certificate CI can sign with")
-	}
-	if !report.VaultsChecked {
-		// A vault not set up on this machine holds nothing; any other failure leaves holdings unknown.
-		for _, vaultError := range checked.VaultErrors {
-			if !errors.Is(vaultError, vault.ErrNotSetUp) {
-				return Plan{}, fmt.Errorf("every vault must be readable to choose the signing certificate: %w", errors.Join(checked.VaultErrors...))
-			}
-		}
-		report.VaultsChecked = true
-	}
-	if certificateID == "" {
-		certificate, ok := report.SigningCertificate()
-		if !ok {
-			return Plan{}, errors.New(noSigningCertificate(report))
-		}
-		plan.Certificate = certificate
-	} else {
-		index := slices.IndexFunc(report.Certificates, func(status signing.CertificateStatus) bool { return status.Certificate.ID == certificateID })
-		if index < 0 || !report.Certificates[index].Certificate.Type.IsDistribution() || !report.Certificates[index].Certificate.ExpiresAt.After(policy.Now) {
-			return Plan{}, fmt.Errorf("certificate %s is not a valid distribution certificate of the team", certificateID)
-		}
-		if !report.Certificates[index].Held {
-			return Plan{}, fmt.Errorf("no vault holds the identity of certificate %s, so CI could not sign with its profiles", certificateID)
-		}
-		plan.Certificate = report.Certificates[index].Certificate
+	plan.Certificate, err = checked.SigningCertificate(len(vaults), certificateID)
+	if err != nil {
+		return Plan{}, err
 	}
 
 	renewals, skipped, upToDate := signing.PlanRenewals(report, plan.Certificate.ID)
@@ -100,22 +72,6 @@ func Prepare(ctx context.Context, portal Portal, vaults []status.Vault, manifest
 		plan.Items = append(plan.Items, item)
 	}
 	return plan, nil
-}
-
-// noSigningCertificate explains why no certificate can sign, without nudging the
-// operator to create a certificate when one exists that merely is not in a vault.
-func noSigningCertificate(report signing.Report) string {
-	var unheld []string
-	for _, status := range report.Certificates {
-		if status.Certificate.Type.IsDistribution() && !status.ExpiresSoon && !status.Held {
-			unheld = append(unheld, status.Certificate.ID)
-		}
-	}
-	message := fmt.Sprintf("no vault holds the identity of a distribution certificate valid beyond %d days", int(report.Policy.ExpiryWindow.Hours()/24))
-	if len(unheld) > 0 {
-		return message + fmt.Sprintf("; %s is valid but its identity is not in a vault, so it was created elsewhere: create a new certificate with crem, or ask its owner", strings.Join(unheld, ", "))
-	}
-	return message + "; create one with crem cert create"
 }
 
 func selectDevices(ctx context.Context, portal Portal, item *Item, enabled []signing.Device) (signing.SkipReason, error) {

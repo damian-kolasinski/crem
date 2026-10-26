@@ -28,6 +28,28 @@ type Config struct {
 	Manifest        signing.Manifest
 	AppStoreConnect AppStoreConnect
 	Vaults          []Vault
+	// CertificateSecrets names the CI secrets that carry the .p12 and its password; nil when CI reads none.
+	CertificateSecrets *CertificateSecrets
+	SecretStores       []SecretStore
+}
+
+// CertificateSecrets names the CI secrets that carry the signing identity.
+type CertificateSecrets struct {
+	P12      string
+	Password string
+}
+
+// SecretStore is a configured CI secret store: exactly one field is set.
+type SecretStore struct {
+	GitHub *GitHubStore
+}
+
+// GitHubStore is a repository's Actions secrets, or one of its environment's.
+type GitHubStore struct {
+	Repository  string
+	Environment string
+	// TokenEnv names the variable holding the token; empty means GH_TOKEN, GITHUB_TOKEN, then `gh auth token`.
+	TokenEnv string
 }
 
 type file struct {
@@ -37,6 +59,19 @@ type file struct {
 	Apps            []app           `yaml:"apps"`
 	Cleanup         *scope          `yaml:"cleanup"`
 	Vaults          []vaultEntry    `yaml:"vaults"`
+	Certificate     *struct {
+		Secrets *struct {
+			P12      string `yaml:"p12"`
+			Password string `yaml:"password"`
+		} `yaml:"secrets"`
+	} `yaml:"certificate"`
+	SecretStores []struct {
+		GitHub *struct {
+			Repository  string `yaml:"repository"`
+			Environment string `yaml:"environment"`
+			TokenEnv    string `yaml:"tokenEnv"`
+		} `yaml:"github"`
+	} `yaml:"secretStores"`
 }
 
 type vaultEntry struct {
@@ -51,7 +86,9 @@ type vaultEntry struct {
 
 type appStoreConnect struct {
 	KeyID          string `yaml:"keyId"`
+	KeyIDEnv       string `yaml:"keyIdEnv"`
 	IssuerID       string `yaml:"issuerId"`
+	IssuerIDEnv    string `yaml:"issuerIdEnv"`
 	PrivateKeyEnv  string `yaml:"privateKeyEnv"`
 	PrivateKeyPath string `yaml:"privateKeyPath"`
 }
@@ -133,6 +170,8 @@ var (
 	bundleIDPattern   = regexp.MustCompile(`^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
 	extensionPattern  = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 	identifierPattern = regexp.MustCompile(`^[A-Z0-9]{10}$`)
+	secretNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+	repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 	uuidPattern       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 )
 
@@ -155,15 +194,23 @@ func Parse(data []byte) (Config, error) {
 	}
 	connect := AppStoreConnect{
 		KeyID:          raw.AppStoreConnect.KeyID,
+		KeyIDEnv:       raw.AppStoreConnect.KeyIDEnv,
 		IssuerID:       raw.AppStoreConnect.IssuerID,
+		IssuerIDEnv:    raw.AppStoreConnect.IssuerIDEnv,
 		PrivateKeyEnv:  raw.AppStoreConnect.PrivateKeyEnv,
 		PrivateKeyPath: raw.AppStoreConnect.PrivateKeyPath,
 	}
-	if !identifierPattern.MatchString(connect.KeyID) {
-		problem("appStoreConnect.keyId: must be a 10-character API key ID")
+	switch {
+	case (connect.KeyID == "") == (connect.KeyIDEnv == ""):
+		problem("appStoreConnect: set exactly one of keyId or keyIdEnv")
+	case connect.KeyIDEnv == "" && !identifierPattern.MatchString(connect.KeyID):
+		problem("appStoreConnect.keyId: " + keyIDProblem)
 	}
-	if !uuidPattern.MatchString(connect.IssuerID) {
-		problem("appStoreConnect.issuerId: must be the issuer ID (a UUID) shown above the API keys in App Store Connect")
+	switch {
+	case (connect.IssuerID == "") == (connect.IssuerIDEnv == ""):
+		problem("appStoreConnect: set exactly one of issuerId or issuerIdEnv")
+	case connect.IssuerIDEnv == "" && !uuidPattern.MatchString(connect.IssuerID):
+		problem("appStoreConnect.issuerId: " + issuerIDProblem)
 	}
 
 	manifest := signing.Manifest{Team: raw.Team}
@@ -252,7 +299,8 @@ func Parse(data []byte) (Config, error) {
 				}
 				seenBundleIDs[target.BundleID] = at
 				if template, ok := secrets[target.Component()]; ok {
-					target.Secret = template.Render(map[string]string{"app": target.App, "environment": target.Environment, "extension": target.Extension, "bundleId": target.BundleID})
+					// Secret stores treat names case-insensitively, so crem compares them in upper case.
+					target.Secret = strings.ToUpper(template.Render(map[string]string{"app": target.App, "environment": target.Environment, "extension": target.Extension, "bundleId": target.BundleID}))
 				}
 				manifest.Targets = append(manifest.Targets, target)
 			}
@@ -306,8 +354,60 @@ func Parse(data []byte) (Config, error) {
 		}
 	}
 
-	if len(problems) > 0 {
-		return Config{}, errors.New(strings.Join(problems, "\n"))
+	var certificateSecrets *CertificateSecrets
+	if raw.Certificate != nil && raw.Certificate.Secrets != nil {
+		certificateSecrets = &CertificateSecrets{P12: strings.ToUpper(raw.Certificate.Secrets.P12), Password: strings.ToUpper(raw.Certificate.Secrets.Password)}
+		for field, name := range map[string]string{"p12": certificateSecrets.P12, "password": certificateSecrets.Password} {
+			if !validSecretName(name) {
+				problem("certificate.secrets.%s: %q is not a valid secret name (letters, digits, and underscores, not starting with GITHUB_)", field, name)
+			}
+		}
+		for _, target := range manifest.Targets {
+			if target.Secret == certificateSecrets.P12 || target.Secret == certificateSecrets.Password {
+				problem("certificate.secrets: %s is also the profile secret of %s", target.Secret, target.BundleID)
+			}
+		}
+		if certificateSecrets.P12 == certificateSecrets.Password {
+			problem("certificate.secrets: p12 and password must be different secrets")
+		}
 	}
-	return Config{Manifest: manifest, AppStoreConnect: connect, Vaults: vaults}, nil
+	for _, target := range manifest.Targets {
+		if target.Secret == "" {
+			continue
+		}
+		if !validSecretName(target.Secret) {
+			problem("apps: %q (for %s) is not a valid secret name (letters, digits, and underscores, not starting with GITHUB_)", target.Secret, target.BundleID)
+		}
+		if !slices.ContainsFunc(manifest.Profiles, func(spec signing.ProfileSpec) bool { return spec.Kind == signing.AppStore }) {
+			problem("apps: secrets carry App Store profiles, so profiles must include the app-store kind")
+			break
+		}
+		if certificateSecrets == nil {
+			problem("certificate.secrets: required because %s pushes its profile to the secret %s; CI must receive the certificate those profiles contain", target.BundleID, target.Secret)
+			break
+		}
+	}
+	var secretStores []SecretStore
+	for index, entry := range raw.SecretStores {
+		at := fmt.Sprintf("secretStores[%d]", index)
+		if entry.GitHub == nil {
+			problem("%s: set github", at)
+			continue
+		}
+		if !repositoryPattern.MatchString(entry.GitHub.Repository) {
+			problem("%s.github.repository: must be owner/name", at)
+		}
+		secretStores = append(secretStores, SecretStore{GitHub: &GitHubStore{Repository: entry.GitHub.Repository, Environment: entry.GitHub.Environment, TokenEnv: entry.GitHub.TokenEnv}})
+	}
+
+	if len(problems) > 0 {
+		slices.Sort(problems)
+		return Config{}, errors.New(strings.Join(slices.Compact(problems), "\n"))
+	}
+	return Config{Manifest: manifest, AppStoreConnect: connect, Vaults: vaults, CertificateSecrets: certificateSecrets, SecretStores: secretStores}, nil
+}
+
+// validSecretName reports whether an upper-cased name is one CI secret stores accept.
+func validSecretName(name string) bool {
+	return secretNamePattern.MatchString(name) && !strings.HasPrefix(name, "GITHUB_")
 }

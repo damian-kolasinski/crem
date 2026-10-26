@@ -10,11 +10,14 @@ import (
 
 // AppStoreConnect locates the App Store Connect API key crem signs requests with.
 type AppStoreConnect struct {
-	KeyID    string
-	IssuerID string
+	// KeyID and IssuerID are given in the config, or read from the variables KeyIDEnv and IssuerIDEnv.
+	KeyID       string
+	KeyIDEnv    string
+	IssuerID    string
+	IssuerIDEnv string
 	// PrivateKeyEnv names an environment variable holding the .p8 contents.
 	PrivateKeyEnv string
-	// PrivateKeyPath is the .p8 file, relative to the config file.
+	// PrivateKeyPath is the .p8 file, relative to the config file; {keyId} stands for the key ID.
 	PrivateKeyPath string
 }
 
@@ -24,6 +27,28 @@ type Environment struct {
 	HomeDir    string
 	WorkingDir string
 	ConfigDir  string
+}
+
+const (
+	keyIDProblem    = "must be a 10-character API key ID"
+	issuerIDProblem = "must be the issuer ID (a UUID) shown above the API keys in App Store Connect"
+)
+
+// Resolve fills in the key and issuer IDs read from the environment.
+func (c AppStoreConnect) Resolve(environment Environment) (AppStoreConnect, error) {
+	if c.KeyIDEnv != "" {
+		c.KeyID = environment.Getenv(c.KeyIDEnv)
+		if !identifierPattern.MatchString(c.KeyID) {
+			return c, fmt.Errorf("$%s %s", c.KeyIDEnv, keyIDProblem)
+		}
+	}
+	if c.IssuerIDEnv != "" {
+		c.IssuerID = environment.Getenv(c.IssuerIDEnv)
+		if !uuidPattern.MatchString(c.IssuerID) {
+			return c, fmt.Errorf("$%s %s", c.IssuerIDEnv, issuerIDProblem)
+		}
+	}
+	return c, nil
 }
 
 // PrivateKey returns the .p8 contents and where they came from. It tries, in order,
@@ -37,7 +62,8 @@ func (c AppStoreConnect) PrivateKey(environment Environment) ([]byte, string, er
 	}
 	var candidates []string
 	if c.PrivateKeyPath != "" {
-		candidates = append(candidates, expandPath(c.PrivateKeyPath, environment.HomeDir, environment.ConfigDir))
+		path := strings.ReplaceAll(c.PrivateKeyPath, "{keyId}", c.KeyID)
+		candidates = append(candidates, expandPath(path, environment.HomeDir, environment.ConfigDir))
 	} else {
 		name := "AuthKey_" + c.KeyID + ".p8"
 		candidates = append(candidates,

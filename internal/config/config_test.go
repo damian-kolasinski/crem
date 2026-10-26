@@ -33,6 +33,10 @@ apps:
   - name: Tool
     environments:
       Production: com.example.tool
+certificate:
+  secrets:
+    p12: CERTIFICATE_BASE64
+    password: CERTIFICATE_PASSWORD
 `
 
 func TestParseExpandsAppsIntoTargets(t *testing.T) {
@@ -46,9 +50,9 @@ func TestParseExpandsAppsIntoTargets(t *testing.T) {
 		got = append(got, target.BundleID+"="+target.Secret)
 	}
 	want := []string{
-		"com.example.demo=PROFILE_BASE64_Production",
+		"com.example.demo=PROFILE_BASE64_PRODUCTION",
 		"com.example.demo.share=",
-		"com.example.demo.staging=PROFILE_BASE64_Staging",
+		"com.example.demo.staging=PROFILE_BASE64_STAGING",
 		"com.example.demo.staging.share=",
 		"com.example.tool=",
 	}
@@ -93,7 +97,7 @@ cleanup:
 	}
 	for _, want := range []string{
 		"team: must be a 10-character team ID",
-		"appStoreConnect.issuerId: must be the issuer ID",
+		"appStoreConnect: set exactly one of issuerId or issuerIdEnv",
 		"profiles[0].name: must include {bundleId}",
 		"profiles[1].kind: app-store is listed twice",
 		"profiles[1].devices: only ad-hoc profiles include devices",
@@ -111,14 +115,55 @@ cleanup:
 func TestParseRejectsDuplicatesAndEmptyFiles(t *testing.T) {
 	cases := map[string]string{
 		"environment \"Production\" is listed twice": strings.Replace(valid, "      Staging: com.example.demo.staging", "      Production: com.example.demo.staging", 1),
-		"would both use the secret PROFILE": strings.Replace(strings.Replace(valid, "PROFILE_BASE64_{environment}", "PROFILE", 1), "      Staging: com.example.demo.staging\n", "", 1) +
-			"    secrets:\n      app: PROFILE\n",
+		"would both use the secret PROFILE": strings.Replace(strings.Replace(strings.Replace(valid, "PROFILE_BASE64_{environment}", "PROFILE", 1), "      Staging: com.example.demo.staging\n", "", 1),
+			"      Production: com.example.tool\n", "      Production: com.example.tool\n    secrets:\n      app: PROFILE\n", 1),
 		"the file is empty": "",
 	}
 	for want, source := range cases {
 		if _, err := Parse([]byte(source)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("want %q, got %v", want, err)
 		}
+	}
+}
+
+func TestSecrets(t *testing.T) {
+	config, err := Parse([]byte(valid + `
+secretStores:
+  - github:
+      repository: owner/app
+      environment: Production
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.CertificateSecrets.P12 != "CERTIFICATE_BASE64" || config.SecretStores[0].GitHub.Environment != "Production" {
+		t.Fatalf("secrets = %+v, stores = %+v", config.CertificateSecrets, config.SecretStores)
+	}
+
+	withoutCertificate := strings.Replace(valid, "certificate:\n  secrets:\n    p12: CERTIFICATE_BASE64\n    password: CERTIFICATE_PASSWORD\n", "", 1)
+	broken := strings.Replace(valid, "password: CERTIFICATE_PASSWORD", "password: PROFILE_BASE64_Staging", 1) + `
+secretStores:
+  - github:
+      repository: not-a-repository
+`
+	for source, want := range map[string]string{
+		withoutCertificate: "certificate.secrets: required because com.example.demo pushes its profile",
+		broken:             "certificate.secrets: PROFILE_BASE64_STAGING is also the profile secret of com.example.demo.staging",
+	} {
+		if _, err := Parse([]byte(source)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("want %q, got %v", want, err)
+		}
+	}
+	if _, err := Parse([]byte(broken)); err == nil || !strings.Contains(err.Error(), "secretStores[0].github.repository: must be owner/name") {
+		t.Errorf("repository: %v", err)
+	}
+	reserved := strings.Replace(valid, "p12: CERTIFICATE_BASE64", "p12: github_certificate", 1)
+	if _, err := Parse([]byte(reserved)); err == nil || !strings.Contains(err.Error(), `"GITHUB_CERTIFICATE" is not a valid secret name`) {
+		t.Errorf("reserved prefix: %v", err)
+	}
+	adHocOnly := strings.Replace(valid, "  - kind: app-store\n    name: \"{bundleId}\"\n", "", 1)
+	if _, err := Parse([]byte(adHocOnly)); err == nil || !strings.Contains(err.Error(), "profiles must include the app-store kind") {
+		t.Errorf("secrets without app-store profiles: %v", err)
 	}
 }
 
@@ -149,6 +194,25 @@ func TestFindWalksUpToTheNearestConfig(t *testing.T) {
 	}
 }
 
+func TestIDsFromTheEnvironment(t *testing.T) {
+	source := strings.Replace(strings.Replace(valid, "  keyId: KEY1234567\n", "  keyIdEnv: ASC_KEY_ID\n", 1), "  issuerId: 00000000-0000-0000-0000-000000000000\n", "  issuerIdEnv: ASC_ISSUER\n", 1)
+	config, err := Parse([]byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"ASC_KEY_ID": "KEY7654321", "ASC_ISSUER": "11111111-2222-3333-4444-555555555555"}
+	resolved, err := config.AppStoreConnect.Resolve(Environment{Getenv: func(name string) string { return env[name] }})
+	if err != nil || resolved.KeyID != "KEY7654321" || resolved.IssuerID != env["ASC_ISSUER"] {
+		t.Fatalf("resolved = %+v, %v", resolved, err)
+	}
+	if _, err := config.AppStoreConnect.Resolve(Environment{Getenv: func(string) string { return "" }}); err == nil || !strings.Contains(err.Error(), "$ASC_KEY_ID must be a 10-character API key ID") {
+		t.Fatalf("unset variable: %v", err)
+	}
+	if _, err := Parse([]byte(strings.Replace(valid, "  keyId: KEY1234567\n", "  keyId: KEY1234567\n  keyIdEnv: ASC_KEY_ID\n", 1))); err == nil || !strings.Contains(err.Error(), "set exactly one of keyId or keyIdEnv") {
+		t.Fatalf("both: %v", err)
+	}
+}
+
 func TestPrivateKeyLookupOrder(t *testing.T) {
 	home := t.TempDir()
 	configDir := t.TempDir()
@@ -159,7 +223,7 @@ func TestPrivateKeyLookupOrder(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(keyDir, "AuthKey_KEY1234567.p8"), []byte("from-home"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "key.p8"), []byte("from-path"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "AuthKey_KEY1234567.p8"), []byte("from-path"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	env := map[string]string{"ASC_KEY": `line1\nline2`}
@@ -170,8 +234,8 @@ func TestPrivateKeyLookupOrder(t *testing.T) {
 		source AppStoreConnect
 		want   string
 	}{
-		{"environment variable wins", AppStoreConnect{KeyID: "KEY1234567", PrivateKeyEnv: "ASC_KEY", PrivateKeyPath: "key.p8"}, "line1\nline2"},
-		{"unset variable falls back to path", AppStoreConnect{KeyID: "KEY1234567", PrivateKeyEnv: "UNSET", PrivateKeyPath: "key.p8"}, "from-path"},
+		{"environment variable wins", AppStoreConnect{KeyID: "KEY1234567", PrivateKeyEnv: "ASC_KEY", PrivateKeyPath: "AuthKey_{keyId}.p8"}, "line1\nline2"},
+		{"unset variable falls back to path", AppStoreConnect{KeyID: "KEY1234567", PrivateKeyEnv: "UNSET", PrivateKeyPath: "AuthKey_{keyId}.p8"}, "from-path"},
 		{"default directories", AppStoreConnect{KeyID: "KEY1234567"}, "from-home"},
 	}
 	for _, testCase := range cases {

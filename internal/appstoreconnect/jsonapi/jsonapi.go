@@ -117,6 +117,11 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("App Store Connect %s %s failed (%d %s): %s", e.Method, e.Path, e.Status, e.Code, e.Detail)
 }
 
+// Get fetches one document.
+func (c *Client) Get(ctx context.Context, path string, query url.Values) (Document, error) {
+	return c.do(ctx, http.MethodGet, c.resolve(path, query), nil)
+}
+
 // GetAll fetches every page of a collection.
 func (c *Client) GetAll(ctx context.Context, path string, query url.Values) (data, included []Resource, err error) {
 	next := c.resolve(path, query)

@@ -40,6 +40,10 @@ apps:
   - name: Tool
     environments:
       Production: com.example.tool
+certificate:
+  secrets:
+    p12: CERTIFICATE_BASE64
+    password: CERTIFICATE_PASSWORD
 cleanup:
   include: [com.example]
 `
@@ -63,6 +67,9 @@ func (p fakePortal) CreateCertificate(context.Context, []byte) (signing.Certific
 }
 func (p fakePortal) CreateProfile(context.Context, signing.NewProfile) (signing.Profile, error) {
 	return signing.Profile{}, errors.New("not implemented")
+}
+func (p fakePortal) ProfileContent(context.Context, string) ([]byte, error) {
+	return nil, errors.New("not implemented")
 }
 func (p fakePortal) DeleteProfile(context.Context, string) error {
 	return errors.New("not implemented")
