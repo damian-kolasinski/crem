@@ -4,6 +4,14 @@ crem is a command-line tool that keeps an Apple developer team's code signing he
 
 Status: early development.
 
+## Install
+
+Install the signed release with [mise](https://mise.jdx.dev), which verifies its [packslip](https://packslip.dev) signature before installing `crem`:
+
+```sh
+mise use -g packslip:damian-kolasinski/crem
+```
+
 ## License
 
 [MIT](LICENSE)
