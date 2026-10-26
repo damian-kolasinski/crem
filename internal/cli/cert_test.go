@@ -101,3 +101,24 @@ func TestCertCreateExecuteSavesTheIdentity(t *testing.T) {
 		t.Fatal("the .p12 password was printed")
 	}
 }
+
+func TestVaultSyncCopiesIntoAnEmptyVault(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, config.FileName), []byte(testConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := testEnvironment(t, directory)
+	held, _ := env.vaults(config.Config{})
+	empty := local.New(filepath.Join(t.TempDir(), "new"))
+	env.vaults = func(config.Config) ([]vault.Vault, error) { return []vault.Vault{held[0], empty}, nil }
+	var out, errOut bytes.Buffer
+
+	code := run([]string{"vault", "sync"}, Streams{Out: &out, Err: &errOut}, "dev", env)
+
+	if code != 0 || !strings.Contains(out.String(), "NEWCERT from local ") || !strings.Contains(out.String(), "--execute") {
+		t.Fatalf("exit = %d, out = %q, err = %q", code, out.String(), errOut.String())
+	}
+	if ids, _ := empty.List(context.Background(), "TEAM123456"); len(ids) != 0 {
+		t.Fatal("the dry run copied an identity")
+	}
+}

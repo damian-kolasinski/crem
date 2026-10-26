@@ -119,7 +119,7 @@ func newRootCommand(streams Streams, version string, env environment) *cobra.Com
 	root.SetOut(streams.Out)
 	root.SetErr(streams.Err)
 	root.PersistentFlags().String("config", "", "path to crem.yaml (default: the nearest one in this or a parent directory)")
-	root.AddCommand(newStatusCommand(env), newCertCommand(env), newProfilesCommand(env), newSecretsCommand(env))
+	root.AddCommand(newStatusCommand(env), newCertCommand(env), newProfilesCommand(env), newSecretsCommand(env), newVaultCommand(env))
 	return root
 }
 
