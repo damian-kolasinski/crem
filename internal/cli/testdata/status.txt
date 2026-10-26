@@ -1,0 +1,23 @@
+Team TEAM123456 · checked 2026-10-26 12:00 UTC · renewal window 45 days · 3 Ad Hoc devices
+
+Distribution certificates
+  ID       NAME                         EXPIRES     LIVE PROFILES  NOTE
+  NEWCERT  Apple Distribution: Example  2027-10-01  3
+
+Profiles · 6 expected, 4 need action
+  PROFILE                       KIND       STATE    EXPIRES     NOTE
+  com.example.demo              app-store  expired  2026-10-24
+  AdHoc com.example.demo        ad-hoc     expired  2026-10-24
+  com.example.demo.share        app-store  missing
+  AdHoc com.example.demo.share  ad-hoc     missing
+  com.example.tool              app-store  ok       2027-10-01
+  AdHoc com.example.tool        ad-hoc     ok       2027-10-01  2 of 3 devices
+
+Needs action
+  PROFILE_EXPIRED  2  com.example.demo (expired 2026-10-24), AdHoc com.example.demo (expired 2026-10-24)
+  PROFILE_MISSING  2  com.example.demo.share, AdHoc com.example.demo.share
+
+Info
+  ADHOC_PROFILE_DEVICE_SUBSET  1  AdHoc com.example.tool (includes 2 of 3 enabled devices)
+
+Cleanup candidates: 3 profiles (3 dead), 0 certificates · 1 other profile crem never touches

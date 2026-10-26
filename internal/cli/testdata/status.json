@@ -1,0 +1,216 @@
+{
+  "team": "TEAM123456",
+  "checkedAt": "2026-10-26T12:00:00Z",
+  "expiryWindowDays": 45,
+  "adHocDeviceCount": 3,
+  "needsAction": true,
+  "certificates": [
+    {
+      "id": "NEWCERT",
+      "name": "Apple Distribution: Example",
+      "type": "DISTRIBUTION",
+      "serialNumber": "AB12",
+      "expiresAt": "2027-10-01T12:00:00Z",
+      "liveProfileCount": 3,
+      "expiresSoon": false
+    },
+    {
+      "id": "DEVCERT",
+      "name": "Apple Development: Someone",
+      "type": "DEVELOPMENT",
+      "serialNumber": "",
+      "expiresAt": "2027-05-14T12:00:00Z",
+      "liveProfileCount": 0,
+      "expiresSoon": false
+    }
+  ],
+  "profiles": [
+    {
+      "name": "com.example.demo",
+      "kind": "app-store",
+      "bundleId": "com.example.demo",
+      "app": "Demo",
+      "environment": "Production",
+      "component": "app",
+      "secret": "PROFILE_DEMO",
+      "bundleIdRegistered": true,
+      "state": "expired",
+      "issues": [
+        "PROFILE_EXPIRED"
+      ],
+      "current": null,
+      "latestExpired": {
+        "id": "P1",
+        "expiresAt": "2026-10-24T12:00:00Z",
+        "certificateIds": [
+          "OLDCERT"
+        ]
+      }
+    },
+    {
+      "name": "AdHoc com.example.demo",
+      "kind": "ad-hoc",
+      "bundleId": "com.example.demo",
+      "app": "Demo",
+      "environment": "Production",
+      "component": "app",
+      "bundleIdRegistered": true,
+      "state": "expired",
+      "issues": [
+        "PROFILE_EXPIRED"
+      ],
+      "current": null,
+      "latestExpired": {
+        "id": "P2",
+        "expiresAt": "2026-10-24T12:00:00Z",
+        "certificateIds": [
+          "OLDCERT"
+        ]
+      }
+    },
+    {
+      "name": "com.example.demo.share",
+      "kind": "app-store",
+      "bundleId": "com.example.demo.share",
+      "app": "Demo",
+      "environment": "Production",
+      "component": "share",
+      "bundleIdRegistered": true,
+      "state": "missing",
+      "issues": [
+        "PROFILE_MISSING"
+      ],
+      "current": null,
+      "latestExpired": null
+    },
+    {
+      "name": "AdHoc com.example.demo.share",
+      "kind": "ad-hoc",
+      "bundleId": "com.example.demo.share",
+      "app": "Demo",
+      "environment": "Production",
+      "component": "share",
+      "bundleIdRegistered": true,
+      "state": "missing",
+      "issues": [
+        "PROFILE_MISSING"
+      ],
+      "current": null,
+      "latestExpired": null
+    },
+    {
+      "name": "com.example.tool",
+      "kind": "app-store",
+      "bundleId": "com.example.tool",
+      "app": "Tool",
+      "environment": "Production",
+      "component": "app",
+      "bundleIdRegistered": true,
+      "state": "ok",
+      "issues": [],
+      "current": {
+        "id": "P3",
+        "expiresAt": "2027-10-01T12:00:00Z",
+        "certificateIds": [
+          "NEWCERT"
+        ]
+      },
+      "latestExpired": null
+    },
+    {
+      "name": "AdHoc com.example.tool",
+      "kind": "ad-hoc",
+      "bundleId": "com.example.tool",
+      "app": "Tool",
+      "environment": "Production",
+      "component": "app",
+      "bundleIdRegistered": true,
+      "state": "ok",
+      "issues": [
+        "ADHOC_PROFILE_DEVICE_SUBSET"
+      ],
+      "current": {
+        "id": "P4",
+        "expiresAt": "2027-10-01T12:00:00Z",
+        "certificateIds": [
+          "NEWCERT"
+        ],
+        "enabledDeviceCount": 2
+      },
+      "latestExpired": null
+    }
+  ],
+  "findings": [
+    {
+      "severity": "action",
+      "code": "PROFILE_EXPIRED",
+      "subject": "com.example.demo",
+      "detail": "expired 2026-10-24"
+    },
+    {
+      "severity": "action",
+      "code": "PROFILE_EXPIRED",
+      "subject": "AdHoc com.example.demo",
+      "detail": "expired 2026-10-24"
+    },
+    {
+      "severity": "action",
+      "code": "PROFILE_MISSING",
+      "subject": "com.example.demo.share"
+    },
+    {
+      "severity": "action",
+      "code": "PROFILE_MISSING",
+      "subject": "AdHoc com.example.demo.share"
+    },
+    {
+      "severity": "info",
+      "code": "ADHOC_PROFILE_DEVICE_SUBSET",
+      "subject": "AdHoc com.example.tool",
+      "detail": "includes 2 of 3 enabled devices"
+    }
+  ],
+  "cleanup": {
+    "profiles": [
+      {
+        "id": "P1",
+        "name": "com.example.demo",
+        "type": "IOS_APP_STORE",
+        "bundleId": "com.example.demo",
+        "expiresAt": "2026-10-24T12:00:00Z",
+        "reasons": [
+          "EXPIRED",
+          "CERTIFICATES_REVOKED_OR_EXPIRED",
+          "SUPERSEDED"
+        ]
+      },
+      {
+        "id": "P2",
+        "name": "AdHoc com.example.demo",
+        "type": "IOS_APP_ADHOC",
+        "bundleId": "com.example.demo",
+        "expiresAt": "2026-10-24T12:00:00Z",
+        "reasons": [
+          "EXPIRED",
+          "CERTIFICATES_REVOKED_OR_EXPIRED",
+          "SUPERSEDED"
+        ]
+      },
+      {
+        "id": "P5",
+        "name": "Old manual profile",
+        "type": "IOS_APP_STORE",
+        "bundleId": "com.example.legacy",
+        "expiresAt": "2026-07-18T12:00:00Z",
+        "reasons": [
+          "EXPIRED",
+          "CERTIFICATES_REVOKED_OR_EXPIRED",
+          "UNMANAGED_BUNDLE_ID",
+          "NON_CONVENTIONAL_NAME"
+        ]
+      }
+    ],
+    "certificates": []
+  },
+  "untouchedProfileCount": 1
+}
