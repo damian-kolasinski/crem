@@ -1,0 +1,14 @@
+Plan: create 3 profiles signed with NEWCERT (Apple Distribution: Example, expires 2027-10-01)
+
+  PROFILE                 KIND       REASON   DEVICES                    DELETES FIRST
+  com.example.demo        app-store  expired                             P1 (dead)
+  AdHoc com.example.demo  ad-hoc     expired  2 (enabled devices of P2)  P2 (dead)
+  com.example.demo.share  app-store  missing
+
+Skipped
+  AdHoc com.example.demo.share  ad-hoc  no previous profile to carry devices over from; set devices: all for this kind
+
+2 profiles up to date.
+
+Live profiles being replaced stay in place; dead ones with the same name are deleted first.
+Run again with --execute to create the new profiles.

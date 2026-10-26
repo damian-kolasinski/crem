@@ -153,6 +153,12 @@ func (c *Client) Post(ctx context.Context, path string, body any) (Document, err
 	return c.do(ctx, http.MethodPost, c.resolve(path, nil), body)
 }
 
+// Delete deletes a resource. It is never retried.
+func (c *Client) Delete(ctx context.Context, path string) error {
+	_, err := c.do(ctx, http.MethodDelete, c.resolve(path, nil), nil)
+	return err
+}
+
 func (c *Client) resolve(path string, query url.Values) *url.URL {
 	resolved := *c.base
 	resolved.Path = strings.TrimSuffix(c.base.Path, "/") + "/" + strings.TrimPrefix(path, "/")

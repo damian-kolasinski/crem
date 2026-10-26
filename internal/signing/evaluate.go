@@ -98,6 +98,8 @@ type ProfileStatus struct {
 	Current *Profile
 	// LatestExpired is the newest dead profile with the expected name, type, and bundle ID, when no profile is live.
 	LatestExpired *Profile
+	// DeadNamesakes are dead in-scope profiles with the expected name, which a new profile replaces.
+	DeadNamesakes []Profile
 	// EnabledDeviceCount is how many of the enabled Ad Hoc devices the Current profile includes, when known.
 	EnabledDeviceCount *int
 	Issues             []FindingCode
@@ -228,6 +230,11 @@ func Evaluate(manifest Manifest, snapshot Snapshot, policy Policy) Report {
 			}
 		}
 
+		for _, profile := range snapshot.Profiles {
+			if profile.Name == expected.Name && !profile.IsLive(policy.Now) && manifest.Cleanup.Contains(profile.BundleID) {
+				status.DeadNamesakes = append(status.DeadNamesakes, profile)
+			}
+		}
 		live := matchingProfiles(snapshot.Profiles, expected, func(profile Profile) bool { return profile.IsLive(policy.Now) })
 		if len(live) == 0 {
 			dead := matchingProfiles(snapshot.Profiles, expected, func(Profile) bool { return true })

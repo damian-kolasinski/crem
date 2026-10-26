@@ -61,6 +61,12 @@ func (p fakePortal) AdHocDevices(context.Context) ([]signing.Device, error) {
 func (p fakePortal) CreateCertificate(context.Context, []byte) (signing.Certificate, []byte, error) {
 	return signing.Certificate{}, nil, errors.New("not implemented")
 }
+func (p fakePortal) CreateProfile(context.Context, signing.NewProfile) (signing.Profile, error) {
+	return signing.Profile{}, errors.New("not implemented")
+}
+func (p fakePortal) DeleteProfile(context.Context, string) error {
+	return errors.New("not implemented")
+}
 func (p fakePortal) ProfileDevices(_ context.Context, id string) ([]signing.Device, error) {
 	var devices []signing.Device
 	for _, deviceID := range p.snapshot.ProfileDevices[id] {
@@ -92,7 +98,7 @@ func testSnapshot() signing.Snapshot {
 			testProfile("P6", "Someone else's", signing.ProfileTypeIOSAppStore, "org.elsewhere", day(100), "NEWCERT"),
 		},
 		AdHocDevices:   []signing.Device{{ID: "D1"}, {ID: "D2"}, {ID: "D3"}},
-		ProfileDevices: map[string][]string{"P4": {"D1", "D2", "RETIRED"}},
+		ProfileDevices: map[string][]string{"P2": {"D1", "D3", "RETIRED"}, "P4": {"D1", "D2", "RETIRED"}},
 	}
 }
 
@@ -102,11 +108,19 @@ func runStatus(t *testing.T, args ...string) (int, string, string) {
 	if err := os.WriteFile(filepath.Join(directory, config.FileName), []byte(testConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	var out, errOut bytes.Buffer
+	code := run(append([]string{"status"}, args...), Streams{Out: &out, Err: &errOut}, "dev", testEnvironment(t, directory))
+	return code, out.String(), errOut.String()
+}
+
+// testEnvironment reaches the fixture team, with a vault holding NEWCERT's identity.
+func testEnvironment(t *testing.T, directory string) environment {
+	t.Helper()
 	store := local.New(filepath.Join(t.TempDir(), "vault"))
 	if err := store.Save(context.Background(), vault.Entry{Team: "TEAM123456", CertificateID: "NEWCERT", P12: []byte("p12"), Password: "password"}); err != nil {
 		t.Fatal(err)
 	}
-	env := environment{
+	return environment{
 		workingDir: directory,
 		homeDir:    t.TempDir(),
 		getenv:     func(string) string { return "" },
@@ -116,9 +130,6 @@ func runStatus(t *testing.T, args ...string) (int, string, string) {
 		},
 		vaults: func(config.Config) ([]vault.Vault, error) { return []vault.Vault{store}, nil },
 	}
-	var out, errOut bytes.Buffer
-	code := run(append([]string{"status"}, args...), Streams{Out: &out, Err: &errOut}, "dev", env)
-	return code, out.String(), errOut.String()
 }
 
 func assertGolden(t *testing.T, name, got string) {
